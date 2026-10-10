@@ -22,14 +22,20 @@ async def lifespan(app:FastAPI):
     import spacy
 
     try:
-        app.state.nlp = spacy.load(SPACY_MODEL_PRIMARY)
+        app.state.nlp = spacy.load(
+    SPACY_MODEL_PRIMARY,
+    disable=["parser", "tagger", "lemmatizer", "attribute_ruler"]
+)
         logger.info(f'Loaded {SPACY_MODEL_PRIMARY}')
     except OSError:
         logger.warning(
             f'{SPACY_MODEL_PRIMARY} not found — '
             f'falling back to {SPACY_MODEL_SECONDARY}'
         )
-        app.state.nlp = spacy.load(SPACY_MODEL_SECONDARY)
+        app.state.nlp = spacy.load(
+    SPACY_MODEL_SECONDARY,
+    disable=["parser", "tagger", "lemmatizer", "attribute_ruler"]
+)
         logger.info(f'Loaded {SPACY_MODEL_SECONDARY} (fallback)')
 
     logger.info(f'Loading SentenceTransformer: {SENTENCE_TRANSFORMER_MODEL}')

@@ -39,8 +39,14 @@ async def lifespan(app:FastAPI):
         logger.info(f'Loaded {SPACY_MODEL_SECONDARY} (fallback)')
 
     logger.info(f'Loading SentenceTransformer: {SENTENCE_TRANSFORMER_MODEL}')
+    import os
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    import torch
+    torch.set_num_threads(1)
     from sentence_transformers import SentenceTransformer
-    app.state.embedder = SentenceTransformer(SENTENCE_TRANSFORMER_MODEL)
+    app.state.embedder = SentenceTransformer(SENTENCE_TRANSFORMER_MODEL, device="cpu")
     logger.info(f'Loaded {SENTENCE_TRANSFORMER_MODEL}')
 
     logger.info('All models loaded. API is ready to serve requests.')

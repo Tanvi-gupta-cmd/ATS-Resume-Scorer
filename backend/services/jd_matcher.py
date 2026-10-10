@@ -1,27 +1,31 @@
 from typing import List, Dict
 import numpy as np
 import spacy
-from sentence_transformers import SentenceTransformer
+
 
 from typing import List, Dict
 import numpy as np
 import spacy
-from sentence_transformers import SentenceTransformer
+
 
 from backend.utils.matching import fuzzy_match_keywords, normalize_skill
 from rapidfuzz import fuzz
 
 
 def calculate_semantic_similarity(
-    resume_text: str, jd_text: str, embedder: SentenceTransformer
+    resume_text: str, jd_text: str, embedder=None
 ) -> float:
-    resume_emb = embedder.encode(resume_text[:5000], convert_to_tensor=False)
-    jd_emb     = embedder.encode(jd_text[:5000], convert_to_tensor=False)
+    """Estimate similarity using word overlap without transformer embeddings."""
+    if not resume_text.strip() or not jd_text.strip():
+        return 0.0
 
-    similarity = np.dot(resume_emb, jd_emb) / (
-        np.linalg.norm(resume_emb) * np.linalg.norm(jd_emb)
-    )
-    return float(np.clip(similarity, 0.0, 1.0))
+    resume_words = set(resume_text[:5000].lower().split())
+    jd_words = set(jd_text[:5000].lower().split())
+
+    if not resume_words or not jd_words:
+        return 0.0
+
+    return len(resume_words & jd_words) / len(resume_words | jd_words)
 
 
 def identify_matched_keywords(
@@ -49,10 +53,24 @@ def analyze_skills_gap(
         if ent.label_ in ['PRODUCT', 'ORG', 'LANGUAGE']:
             jd_skills.add(ent.text.lower())
 
-    for chunk in doc.noun_chunks:
-        ct = chunk.text.lower().strip()
-        if 1 <= len(ct.split()) <= 4:
-            jd_skills.add(ct)
+    # Extract lightweight candidate phrases without requiring spaCy's parser.
+    tokens = [
+        token for token in doc
+        if not token.is_punct and not token.is_space
+    ]
+
+    for size in range(1, 5):
+        for i in range(len(tokens) - size + 1):
+            phrase_tokens = tokens[i:i + size]
+
+            # Skip phrases made entirely of stopwords.
+            if all(token.is_stop for token in phrase_tokens):
+                continue
+
+            phrase = " ".join(token.text.lower() for token in phrase_tokens).strip()
+
+            if len(phrase) >= 2:
+                jd_skills.add(phrase)
 
     # Normalize resume skills for comparison
     resume_normalized = {normalize_skill(s) for s in resume_skills}
@@ -95,7 +113,7 @@ def compare_resume_with_jd(
     resume_skills: List[str],
     jd_text: str,
     jd_keywords: List[str],
-    embedder: SentenceTransformer,
+    embedder,
     nlp: spacy.Language,
 ) -> Dict:
     semantic_similarity = calculate_semantic_similarity(resume_text, jd_text, embedder)

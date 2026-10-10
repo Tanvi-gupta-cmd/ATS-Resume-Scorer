@@ -1,7 +1,7 @@
 import re
 import spacy
 import numpy as np
-from sentence_transformers import SentenceTransformer
+
 from typing import Dict, List, Optional, Tuple
 
 from backend.utils.file_utils import log_warning
@@ -72,39 +72,33 @@ def detect_location_info(text: str, nlp: spacy.Language) -> Dict:
         'penalty_applied':    penalty,
     }
 
-def _calculate_semantic_similarity(skill: str, text: str, embedder: SentenceTransformer) -> float:
-    #similarity = (A · B) / (|A| × |B|)
+def _calculate_semantic_similarity(skill: str, text: str, embedder=None) -> float:
+    """Lightweight lexical similarity; does not load an ML embedding model."""
+    from rapidfuzz import fuzz
+
     if not skill or not text:
         return 0.0
-    try:
-        skill_vec  = embedder.encode(skill, convert_to_tensor=False)
-        text_vec   = embedder.encode(text,  convert_to_tensor=False)
 
-        similarity = np.dot(skill_vec, text_vec) / (
-            np.linalg.norm(skill_vec) * np.linalg.norm(text_vec)
-        )
+    return fuzz.partial_ratio(skill.lower().strip(), text.lower()) / 100.0
 
-        return float(max(0.0, min(1.0, similarity)))
-    except Exception as e:
-        log_warning(f"Similarity error for '{skill}': {e}", context='ats_scorer')
-        return 0.0
 
-def _skill_matches(skill: str, text: str, embedder: SentenceTransformer, threshold: float) -> Tuple[bool, float]:
+def _skill_matches(skill: str, text: str, embedder=None, threshold: float = 0.6):
+    if not skill or not text:
+        return False, 0.0
 
-    #fast, o(n) directly check if skill is a substring of the text (case-insensitive)
-    if skill.lower() in text.lower():
+    if skill.lower().strip() in text.lower():
         return True, 1.0
-    
-    #slow, semantic similarity check using sentence embeddings
-    sim = _calculate_semantic_similarity(skill, text, embedder)
-    return sim >= threshold, sim
+
+    similarity = _calculate_semantic_similarity(skill, text)
+    return similarity >= threshold, similarity
+
 
 #Skill validation
 def validate_skills_with_projects(
     skills: List[str],
     projects: List[Dict],
     experience_entries: List[Dict],
-    embedder: SentenceTransformer,
+    embedder,
     threshold: float = 0.6,
 ) -> Dict:
     
